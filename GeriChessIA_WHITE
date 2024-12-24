@@ -1,6 +1,6 @@
 #bot con tablero en SVG el ususario juega con blancas
 #Gerard Llonch Farrés 23/09/2024 gerard.llonch07@gmail.com
-
+#Tauler amb clicks
 
 import pandas as pd
 from time import sleep
@@ -8,6 +8,7 @@ import random
 from PyQt5.QtSvg import QSvgWidget
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSpacerItem, QSizePolicy, QHBoxLayout
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QPoint
 
 import chess
 import chess.svg
@@ -46,6 +47,37 @@ class MainWindow(QWidget):
         # Inicialitzar el tabuler
         self.chessboard = chess.Board()
         self.update_board()
+    
+    # Conectar el evento de clic al tablero
+        self.widgetSvg.mousePressEvent = self.handle_mouse_click
+
+    def handle_mouse_click(self, event):
+        if event.button() == Qt.LeftButton:
+            position = event.pos()
+            square = self.get_square_from_click(position)
+            
+            if self.selected_square is None:
+                # Primera selección
+                self.selected_square = square
+            else:
+                # Segunda selección, intentar mover
+                move = chess.Move.from_uci(self.selected_square + square)
+                if move in self.chessboard.legal_moves:
+                    self.chessboard.push(move)
+                    self.update_board()
+                else:
+                    print("Movimiento ilegal")
+                self.selected_square = None  # Resetear selección
+
+    def get_square_from_click(self, position: QPoint) -> str:
+        board_size = min(self.widgetSvg.width(), self.widgetSvg.height())
+        square_size = board_size / 8
+        x = position.x() // square_size
+        y = position.y() // square_size
+        # Convertir a notación UCI
+        file = chr(int(x) + ord('a'))
+        rank = str(8 - int(y))
+        return file + rank
       
     def on_button_click(self):
         # Resetea el tablero visual y el estado interno del juego
@@ -237,36 +269,65 @@ def BOT_MOVE(board, player_move):
 #DEFINIR JUGADA DEL JUGADOR
 #================================================================================================
 def USER_MOVE(board):
-    if board.is_checkmate():
-        last_move = board.peek()  # Obtener el último movimiento sin modificar el tablero
-        winner = "White" if board.turn == chess.BLACK else "Black"
-        print("Winner:", winner)
+    """Permite al usuario realizar su movimiento mediante clics con el ratón."""
+    print("Es tu turno. Haz clic en las casillas para mover.")
 
-        # Devolver el objeto board para evitar el error en BOT_MOVE
-        return '', board  # Asegúrate de devolver el objeto board, no un string
-    else:
-        legal_moves = [move.uci() for move in board.legal_moves]
-        while True:
-            try:
-                player_move = input("Tu movimiento:")
-                if not pawn_promotion(board, player_move):
-                    board.push_san(player_move)
+    def handle_click(event):
+        try:    
+            nonlocal selected_square, move_done
+
+            if event.button() == Qt.LeftButton:
+                position = event.pos()
+                square = get_square_from_click(position)
+
+                if selected_square is None:
+                    # Primera selección: guardar la casilla inicial
+                    selected_square = square
+                    print(f"Casilla inicial seleccionada: {square}")
                 else:
-                    promotion_piece = input("Piece to promote to (q, r, k, b):")
-                    board.push_san(player_move + promotion_piece)
-                break
-            except ValueError or player_move not in legal_moves:
-                print("Movimiento Ilegal, prueba de nuevo")
-                
-            # Actualizar el tablero después del movimiento del usuario
-            window.update_board()
-            app.processEvents()  # Refrescar la interfaz
-            
-            chessboardSvg = chess.svg.board(board, flipped=False).encode("UTF-8")
-            window.widgetSvg.load(chessboardSvg)
-            app.processEvents()
-            
-        return player_move, board
+                    try:    
+                        # Segunda selección: intentar realizar el movimiento
+                        move = chess.Move.from_uci(selected_square + square)
+                        if move in board.legal_moves:
+                            board.push(move)
+                            move_done = True  # Marcar que el movimiento se ha completado
+                            print(f"Movimiento realizado: {selected_square + square}")
+                        else:
+                            print("Movimiento ilegal, selecciona nuevamente.")
+                        selected_square = None  # Reiniciar la selección
+                    except chess.InvalidMoveError:
+                        print(f"Error: Movimiento inválido al intentar mover de {selected_square} a {square}.")
+                        selected_square = None  # Reiniciar la selección si el movimiento es inválido
+                        return  # Salir de la función sin cambiar el estado
+        except ValueError as e: 
+            print(f"Error: {e}")
+            selected_square = None  # Reiniciar la selección si ocurre un error
+
+    def get_square_from_click(position):
+        """Convierte la posición del clic en una casilla en notación UCI."""
+        board_size = min(window.widgetSvg.width(), window.widgetSvg.height())
+        square_size = board_size / 8
+        x = int(position.x() // square_size)
+        y = int(position.y() // square_size)
+        # Convertir a notación UCI
+        file = chr(x + ord('a'))
+        rank = str(8 - y)
+        return file + rank
+
+    # Variables internas para controlar el movimiento
+    selected_square = None
+    move_done = False
+
+    # Conectar el evento de clic
+    window.widgetSvg.mousePressEvent = handle_click
+
+    # Esperar a que el usuario complete su movimiento
+    while not move_done:
+        app.processEvents()  # Permitir que PyQt procese eventos
+
+    # Actualizar el tablero después del movimiento del usuario
+    window.update_board()
+    return board.peek().uci(), board  # Retornar el último movimiento y el estado actualizado del tablero
     
 # =============================================================================
 #   Comprovación de si hay coronación o no
