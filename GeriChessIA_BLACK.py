@@ -1,67 +1,88 @@
-#El usuario juega con negras
-import time
-import random
+#bot con tablero en SVG el ususario juega con negras
+#Gerard Llonch Farrés 23/09/2024 gerard.llonch07@gmail.com
+#Tauler amb clicks
+
 import pandas as pd
-import os
 from time import sleep
 import random
 from PyQt5.QtSvg import QSvgWidget
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLineEdit, QLabel, QSpacerItem, QSizePolicy, QHBoxLayout
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QSpacerItem, QSizePolicy, QHBoxLayout
 from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QPoint
 
 import chess
 import chess.svg
-import chess.syzygy
 import chess.pgn
 
-#importacions per l'assistent (si es fan)
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-
-        # Definir dimensiones de la ventana
+        self.setWindowTitle("GeriChessIA")
+        # Definir dimensions de la finestra
         self.setGeometry(100, 100, 800, 800)
-
         # Crear layout principal vertical
         main_layout = QVBoxLayout()
-
-        # Crear layout para el tablero
+        # Crear layout per al tauler
         self.board_layout = QVBoxLayout()
-
-        # Crear widget SVG para el tablero de ajedrez
+        # Crear widget SVG per al tauler d'escacs
         self.widgetSvg = QSvgWidget(parent=self)
         self.widgetSvg.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.board_layout.addWidget(self.widgetSvg)
-
-        # Añadir el tablero al layout principal con espaciadores para centrarlo
+        # Afegir el tauler al layout principal amb espaiadors per centrar-lo
         main_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
         main_layout.addLayout(self.board_layout)
         main_layout.addSpacerItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
-
-        # Crear layout horizontal para botones y otros controles
+        # Crear layout horizontal per a botons
         button_layout = QHBoxLayout()
-
-        # Añadir un espaciador flexible a la izquierda del botón para centrarlo
         button_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
-
-        # Crear botón de reinicio y añadirlo al layout horizontal
+        # Crear botó de reinici i afegir-lo al layout horitzontal
         self.reset_button = QPushButton("Reset", self)
         self.reset_button.clicked.connect(self.on_button_click)
         button_layout.addWidget(self.reset_button)
-
-        # Añadir un espaciador flexible a la derecha del botón para centrarlo
         button_layout.addSpacerItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
-
-        # Añadir el layout de botones al layout principal
         main_layout.addLayout(button_layout)
-
-        # Establecer el layout en la ventana principal
+        # Establir el layout a la finestra principal
         self.setLayout(main_layout)
-        
-        # Inicializar el tablero
+        # Inicialitzar el tabuler
         self.chessboard = chess.Board()
         self.update_board()
+    
+    # Conectar el evento de clic al tablero
+        self.widgetSvg.mousePressEvent = self.handle_mouse_click
+
+    def handle_mouse_click(self, event):
+        try: 
+            if event.button() == Qt.LeftButton:
+                position = event.pos()
+                square = self.get_square_from_click(position)
+                
+                if self.selected_square is None:
+                    # Primera selección
+                    self.selected_square = square
+                else:
+                    # Segunda selección, intentar mover
+                    move = chess.Move.from_uci(self.selected_square + square)
+                    if move in self.chessboard.legal_moves:
+                        self.chessboard.push(move)
+                        self.update_board()
+                    else:
+                        print("Movimiento ilegal")
+                    self.selected_square = None  # Resetear selección
+        except chess.InvalidMoveError as e:
+        # Manejar el caso de movimiento inválido (como seleccionar la misma casilla)
+            print(f"Error: Movimiento inválido: {e}")
+        
+
+    def get_square_from_click(self, position: QPoint) -> str:
+        board_size = min(self.widgetSvg.width(), self.widgetSvg.height())
+        square_size = board_size / 8
+        x = position.x() // square_size
+        y = position.y() // square_size
+        # Convertir a notación UCI
+        file = chr(int(x) + ord('a'))
+        rank = str(8 - int(y))
+        return file + rank
       
     def on_button_click(self):
         # Resetea el tablero visual y el estado interno del juego
@@ -97,30 +118,30 @@ class MainWindow(QWidget):
 # =============================================================================
 # Función de evaluación de tablero
 # =============================================================================
-#Valor de peces
+
+#Primera valoració
 def getPieceValue(piece):
     """Asigna un valor a las piezas según su tipo."""
     if piece is None:
         return 0
-
     value = 0
     symbol = piece.symbol()
 
-    # Valores básicos de las piezas
+    # Valors bàsics de les peces
     if symbol == "P" or symbol == "p":
-        value = -10
+        value = 10
     elif symbol == "N" or symbol == "n":
-        value = -30
+        value = 30
     elif symbol == "B" or symbol == "b":
-        value = -30
+        value = 30
     elif symbol == "R" or symbol == "r":
-        value = -50
+        value = 50
     elif symbol == "Q" or symbol == "q":
-        value = -90
+        value = 90
     elif symbol == "K" or symbol == "k":
-        value = -900
+        value = 900
 
-    # Multiplicar por -1 si es una pieza negra
+    # Multiplicar per -1 si es una peça negra
     if piece.color == chess.BLACK:
         value = -value
 
@@ -133,7 +154,7 @@ def evaluate_center_control(board):
     for square in center_squares:
         piece = board.piece_at(square)
         if piece:
-            control += getPieceValue(piece) // -10  # Aumentar ligeramente el valor si controla el centro
+            control += getPieceValue(piece) // 10  # Aumentar ligeramente el valor si controla el centro
     return control
 
 # Evaluar la estructura de peones
@@ -141,7 +162,7 @@ def evaluate_pawn_structure(board):
     # Aquí podrías agregar criterios como peones aislados, doblados o pasados.
     # Por ahora, simplificaremos evaluando el número de peones en el tablero.
     pawns = len(board.pieces(chess.PAWN, chess.WHITE)) - len(board.pieces(chess.PAWN, chess.BLACK))
-    return pawns * -10  # Ajustar el valor según la importancia de la estructura de peones
+    return pawns * 10  # Ajustar el valor según la importancia de la estructura de peones
 
 # Evaluar la seguridad del rey
 def evaluate_king_safety(board):
@@ -158,20 +179,20 @@ def evaluate_mobility(board):
     mobility = len(list(board.legal_moves))
     return mobility
 
-# Función principal de evaluación
+# Funció principal d'avaluació
 def evaluation(board):
     evaluation = 0
 
-    # Sumar el valor de las piezas
+    # Sumar el valor de les peces
     for square in chess.SQUARES:
         piece = board.piece_at(square)
         evaluation += getPieceValue(piece)
 
-    # Añadir factores adicionales a la evaluación
-    evaluation -= evaluate_center_control(board)  # Control del centro
-    evaluation -= evaluate_pawn_structure(board)  # Estructura de peones
-    evaluation -= evaluate_king_safety(board)     # Seguridad del rey
-    evaluation -= evaluate_mobility(board)        # Movilidad
+    # Altres factors de la funció d'avaluació
+    evaluation += evaluate_center_control(board)  # Control del centre
+    evaluation += evaluate_pawn_structure(board)  # Estructura de peons
+    evaluation += evaluate_king_safety(board)     # Seguretat del rei
+    evaluation += evaluate_mobility(board)        # Mobilitat
 
     return evaluation
 
@@ -243,48 +264,77 @@ def BOT_MOVE(board, player_move):
     window.update_board()
     app.processEvents()  # Refrescar la interfaz
     
-    chessboardSvg = chess.svg.board(board, flipped=True).encode("UTF-8")
+    chessboardSvg = chess.svg.board(board, flipped=False).encode("UTF-8")
     window.widgetSvg.load(chessboardSvg)
     app.processEvents()
 
-    return bot_move, board, app.processEvents() and print("Posición FEN actual:", board.fen())
+    return bot_move, board and print("Posición FEN actual:", board.fen())
 
- 
 #=================================================================================================  
 #DEFINIR JUGADA DEL JUGADOR
 #================================================================================================
 def USER_MOVE(board):
-    if board.is_checkmate():
-        last_move = board.peek()  # Obtener el último movimiento sin modificar el tablero
-        winner = "White" if board.turn == chess.BLACK else "Black"
-        print("Winner:", winner)
+    """Permite al usuario realizar su movimiento mediante clics con el ratón."""
+    print("Es tu turno. Haz clic en las casillas para mover.")
 
-        # Devolver el objeto board para evitar el error en BOT_MOVE
-        return '', board  # Asegúrate de devolver el objeto board, no un string
-    else:
-        legal_moves = [move.uci() for move in board.legal_moves]
-        while True:
-            try:
-                player_move = input("Your move:")
-                if not pawn_promotion(board, player_move):
-                    board.push_san(player_move)
+    def handle_click(event):
+        try:
+            nonlocal selected_square, move_done
+            
+            if event.button() == Qt.LeftButton:
+                position = event.pos()
+                square = get_square_from_click(position)
+
+                if selected_square is None:
+                    # Primera selección: guardar la casilla inicial
+                    selected_square = square
+                    print(f"Casilla inicial seleccionada: {square}")
                 else:
-                    promotion_piece = input("Piece to promote to (Q, R, K, B):")
-                    board.push_san(player_move + promotion_piece)
-                break
-            except ValueError or player_move not in legal_moves:
-                print("Illegal move. Try again.")
-                
-            # Actualizar el tablero después del movimiento del usuario
-            window.update_board()
-            app.processEvents()  # Refrescar la interfaz
-            
-            chessboardSvg = chess.svg.board(board, flipped=False).encode("UTF-8")
-            window.widgetSvg.load(chessboardSvg)
-            app.processEvents()
-            
+                    try:
+                    # Segunda selección: intentar realizar el movimiento
+                        move = chess.Move.from_uci(selected_square + square)
+                        if move in board.legal_moves:
+                            board.push(move)
+                            move_done = True  # Marcar que el movimiento se ha completado
+                            print(f"Movimiento realizado: {selected_square + square}")
+                        else:
+                            print("Movimiento ilegal, selecciona nuevamente.")
+                        selected_square = None  # Reiniciar la selección
+                    except chess.InvalidMoveError:
+                        print(f"Error: Movimiento inválido al intentar mover de {selected_square} a {square}.")
+                        selected_square = None  # Reiniciar la selección si el movimiento es inválido
+                        return  # Salir de la función sin cambiar el estado
+        except ValueError as e:
+            print(f"Error: {e}")
+            selected_square = None  # Reiniciar la selección si ocurre un error
+    
+        
+    def get_square_from_click(position):
+        """Convierte la posición del clic en una casilla en notación UCI."""
+    
+        board_size = min(window.widgetSvg.width(), window.widgetSvg.height())
+        square_size = board_size / 8
+        x = int(position.x() // square_size)
+        y = int(position.y() // square_size)
+        # Convertir a notación UCI
+        file = chr(x + ord('a'))
+        rank = str(8 - y)
+        return file + rank
 
-        return player_move, board 
+    # Variables internas para controlar el movimiento
+    selected_square = None
+    move_done = False
+
+    # Conectar el evento de clic
+    window.widgetSvg.mousePressEvent = handle_click
+
+    # Esperar a que el usuario complete su movimiento
+    while not move_done:
+        app.processEvents()  # Permitir que PyQt procese eventos
+
+    # Actualizar el tablero después del movimiento del usuario
+    window.update_board()
+    return board.peek().uci(), board  # Retornar el último movimiento y el estado actualizado del tablero
     
 # =============================================================================
 #   Comprovación de si hay coronación o no
@@ -331,7 +381,7 @@ if __name__ == "__main__":
     # Crear la ventana principal
     window = MainWindow()
 
-    chessboardSvg = chess.svg.board(board, flipped=True).encode("UTF-8")
+    chessboardSvg = chess.svg.board(board, flipped=False).encode("UTF-8")
     window.widgetSvg.load(chessboardSvg)
     window.show()
     app.processEvents()
@@ -341,27 +391,18 @@ if __name__ == "__main__":
         i += 1
         print("Turno número " + str(i))
         
-        # Mover las piezas blancas (bot)
-        print("El bot (blancas) está pensando...")
+        # Mover las piezas negras (bot)
         bot_move = BOT_MOVE(board, None)
-            # Actualizar y mostrar el tablero
-        window.update_board()
-        app.processEvents()  # Refrescar la interfaz
-        
-        chessboardSvg = chess.svg.board(board, flipped=True).encode("UTF-8")
+        chessboardSvg = chess.svg.board(board, flipped=False).encode("UTF-8")
         window.widgetSvg.load(chessboardSvg)
         app.processEvents()
-        
         # Verificar si el juego ha terminado después del movimiento del bot
         if board.is_game_over():
             break
-
-        # Mover las piezas negras (usuario)
-        player_move, board = USER_MOVE(board)
-        window.update_board()
-        app.processEvents()  # Refrescar la interfaz
         
-        chessboardSvg = chess.svg.board(board, flipped=True).encode("UTF-8")
+        # Mover las piezas blancas (usuario)
+        player_move, board = USER_MOVE(board)
+        chessboardSvg = chess.svg.board(board, flipped=False).encode("UTF-8")
         window.widgetSvg.load(chessboardSvg)
         app.processEvents()
         # Verificar si el juego ha terminado después del movimiento del usuario
